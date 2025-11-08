@@ -1,12 +1,52 @@
-const mainWindow = new BrowserWindow({
-  width: 400,
-  height: 150,
-  transparent: true, // Torna o fundo transparente
-  frame: false,      // Remove as barras de título e bordas
-  alwaysOnTop: true, // Garante que fique por cima de outros apps
-  webPreferences: {
-    nodeIntegration: true,
-    ignoreMouseEvents: true 
-  }
+// C:\Users\Aluno\DSMTerceiro\ProjetoHackathon\FrontEnd\main.js
 
+const { app, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+
+let mainWindow;
+
+function createWindow() {
+  // Configurações críticas para o modo 'Overlay'
+  mainWindow = new BrowserWindow({
+    width: 800, // Aumentamos a largura para a legenda
+    height: 150,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false, // Necessário para usar 'require' no index.html (ipcRenderer)
+      // O ignoreMouseEvents é ativado/desativado via comunicação IPC
+      ignoreMouseEvents: true 
+    }
+  });
+
+  mainWindow.loadFile('index.html'); 
+
+  // mainWindow.webContents.openDevTools(); 
+}
+
+// --- OUvinte de Comunicação (IPC Main) ---
+// Este ouvinte permite que o frontend (index.html) altere o estado do mouse
+ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
+  if (mainWindow) {
+    mainWindow.setIgnoreMouseEvents(ignore, options);
+  }
+});
+// ----------------------------------------
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });

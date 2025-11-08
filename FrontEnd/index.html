@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Live Caption Overlay</title>
+    <link rel="stylesheet" href="style.css"> 
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <div class="caption-container">
+        <div id="caption-box" class="caption-box">
+            <p id="caption-output">Pressione INICIAR para começar a legendar...</p>
+        </div>
+
+        <div id="control-panel" class="control-panel hidden">
+            <button id="startButton" class="control-button"><i class="fas fa-play"></i> INICIAR</button>
+            <button id="pauseResumeButton" class="control-button" disabled><i class="fas fa-pause"></i> PAUSAR</button>
+            <button id="stopButton" class="control-button" disabled><i class="fas fa-stop"></i> FINALIZAR</button>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        // Configuração da Web Speech API (transcrição do navegador)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+
+        const captionOutput = document.getElementById('caption-output');
+        const startButton = document.getElementById('startButton');
+        const pauseResumeButton = document.getElementById('pauseResumeButton');
+        const stopButton = document.getElementById('stopButton');
+        const controlPanel = document.getElementById('control-panel');
+        const captionContainer = document.querySelector('.caption-container');
+        
+        let isListening = false;
+        let isPaused = false;
+        
+        if (recognition) {
+            recognition.continuous = true; // Continua ouvindo
+            recognition.interimResults = true; // Resultados em tempo real (legenda)
+            recognition.lang = 'pt-BR'; // Idioma
+
+            // --- FUNÇÕES DE CONTROLE DE INTERATIVIDADE (ELECTRON) ---
+            
+            // Permite o clique na janela do overlay
+            function enableInteraction() {
+                ipcRenderer.send('set-ignore-mouse-events', false);
+                controlPanel.classList.remove('hidden');
+            }
+            
+            // Faz o mouse 'passar' pela janela (Modo Overlay)
+            function disableInteraction() {
+                ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+                controlPanel.classList.add('hidden');
+            }
+
+            // --- LÓGICA DA TRANSCRIÇÃO ---
+
+            recognition.onstart = () => {
+                isListening = true;
+                isPaused = false;
+                captionOutput.textContent = '🔊 Ouvindo...';
+                pauseResumeButton.disabled = false;
+                stopButton.disabled = false;
+                startButton.disabled = true;
+                pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript + ' ';
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                // Exibe a legenda em tempo real
+                captionOutput.textContent = (finalTranscript + interimTranscript).trim() || '🔊 Ouvindo...';
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                startButton.disabled = false;
+                pauseResumeButton.disabled = true;
+                stopButton.disabled = true;
+                captionOutput.textContent = 'Pressione INICIAR para começar a legendar...';
+            };
+            
+            recognition.onerror = (event) => {
+                 console.error('Erro de reconhecimento:', event.error);
+                 captionOutput.textContent = `Erro: ${event.error}`;
+                 recognition.stop();
+            }
+
+            // --- MANIPULADORES DE BOTÃO ---
+
+            startButton.addEventListener('click', () => {
+                captionOutput.textContent = 'Iniciando microfone...';
+                try {
+                    // 1. Permite interagir com os botões
+                    enableInteraction(); 
+                    // 2. Inicia o reconhecimento
+                    recognition.start();
+                } catch(e) {
+                    console.error("Erro ao iniciar:", e);
+                    captionOutput.textContent = 'Erro ao iniciar a transcrição. Verifique as permissões.';
+                    disableInteraction();
+                }
+            });
+
+            pauseResumeButton.addEventListener('click', () => {
+                if (isListening) {
+                    if (isPaused) {
+                        // VOLTAR (Play)
+                        recognition.start(); 
+                        isPaused = false;
+                        pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
+                        captionOutput.textContent = '🔊 Retomando a escuta...';
+                    } else {
+                        // PAUSAR
+                        recognition.abort(); // Interrompe temporariamente
+                        isPaused = true;
+                        pauseResumeButton.innerHTML = '<i class="fas fa-play"></i> VOLTAR';
+                        captionOutput.textContent = '⏸️ Pausado.';
+                    }
+                }
+            });
+
+            stopButton.addEventListener('click', () => {
+                recognition.stop(); // Finaliza a sessão de reconhecimento
+                disableInteraction(); // Torna o overlay inerte
+            });
+            
+            // --- HABILITAR CONTROLES INICIAIS (Clique duplo na legenda para mostrar) ---
+            
+            captionContainer.addEventListener('dblclick', enableInteraction);
+            
+        } else {
+             captionOutput.textContent = 'API de Reconhecimento de Voz não suportada pelo seu navegador/Electron.';
+        }
+    </script>
+</body>
+</html>
