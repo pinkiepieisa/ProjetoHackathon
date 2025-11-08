@@ -100,6 +100,19 @@
 
             // --- MANIPULADORES DE BOTÃO ---
 
+            if (recognition) {
+                recognition.continuous = true; // OK
+                recognition.interimResults = true; // OK
+                recognition.lang = 'pt-BR'; // OK
+                
+                // ADICIONE ESTA LINHA:
+                recognition.maxAlternatives = 1; // Boa prática
+
+                // Se o problema persistir, adicione um timeout explícito (embora não seja padrão na API)
+                // recognition.grammars = null; // Garante que não há gramáticas complexas desnecessárias
+                // recognition.serviceURI = '...'; // Não altere, pois é o serviço padrão.
+            }
+
             startButton.addEventListener('click', () => {
                 captionOutput.textContent = 'Iniciando microfone...';
                 try {
@@ -142,7 +155,7 @@
             captionContainer.addEventListener('dblclick', enableInteraction);
             
         } else {
-             captionOutput.textContent = 'API de Reconhecimento de Voz não suportada pelo seu navegador/Electron.';
+            captionOutput.textContent = 'API de Reconhecimento de Voz não suportada pelo seu navegador/Electron.';
         }
     </script>
 </body>
