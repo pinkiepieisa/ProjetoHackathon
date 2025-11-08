@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Live Caption Overlay</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+    
     <link rel="stylesheet" href="style.css"> 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
@@ -14,130 +16,181 @@
 
         <div id="control-panel" class="control-panel hidden">
             <button id="startButton" class="control-button"><i class="fas fa-play"></i> INICIAR</button>
-            <button id="pauseResumeButton" class="control-button" disabled><i class="fas fa-pause"></i> PAUSAR</button>
-            <button id="stopButton" class="control-button" disabled><i class="fas fa-stop"></i> FINALIZAR</button>
+            
+            <button id="pauseResumeButton" class="control-button" disabled>
+                <i class="fas fa-pause"></i> PAUSAR
+            </button>
+            
+            <button id="stopButton" class="control-button" disabled>
+                <i class="fas fa-stop"></i> FINALIZAR
+            </button>
         </div>
     </div>
-
     <script>
-        const { ipcRenderer } = require('electron');
-        
-        // Configuração da Web Speech API (transcrição do navegador)
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
-
-        const captionOutput = document.getElementById('caption-output');
-        const startButton = document.getElementById('startButton');
-        const pauseResumeButton = document.getElementById('pauseResumeButton');
-        const stopButton = document.getElementById('stopButton');
-        const controlPanel = document.getElementById('control-panel');
-        const captionContainer = document.querySelector('.caption-container');
-        
-        let isListening = false;
-        let isPaused = false;
-        
-        if (recognition) {
-            recognition.continuous = true; // Continua ouvindo
-            recognition.interimResults = true; // Resultados em tempo real (legenda)
-            recognition.lang = 'pt-BR'; // Idioma
-
-            // --- FUNÇÕES DE CONTROLE DE INTERATIVIDADE (ELECTRON) ---
+        // *** IMPORTANTE: ENVOLVA TODO O SEU CÓDIGO DENTRO DE DOMContentLoaded ***
+        // Isso garante que o JS só tente buscar os elementos HTML APÓS eles existirem.
+        document.addEventListener('DOMContentLoaded', () => {
             
-            // Permite o clique na janela do overlay
+            // Seu código JavaScript começa aqui (AGORA FUNCIONARÁ):
+
+            const { ipcRenderer } = require('electron');
+            
+            // As variáveis agora encontrarão os elementos no DOM
+            const captionOutput = document.getElementById('caption-output');
+            const startButton = document.getElementById('startButton');
+            const pauseResumeButton = document.getElementById('pauseResumeButton');
+            const stopButton = document.getElementById('stopButton');
+            const controlPanel = document.getElementById('control-panel');
+            const captionContainer = document.querySelector('.caption-container');
+            
+            // Variáveis de controle de áudio
+            let mediaRecorder;
+            let audioStream;
+            let audioChunks = [];
+            let isListening = false;
+            let isPaused = false;
+
+            // --- Configurações de Transcrição (Para Python) ---
+            const CHUNK_INTERVAL = 1500;
+            const PYTHON_API_URL = 'http://127.0.0.1:5001/transcribe';
+            // ----------------------------------------------------
+            
+            // --- FUNÇÕES DE CONTROLE DE INTERATIVIDADE (ELECTRON) ---
+            // ... (Seu código de enableInteraction e disableInteraction) ...
             function enableInteraction() {
                 ipcRenderer.send('set-ignore-mouse-events', false);
                 controlPanel.classList.remove('hidden');
             }
             
-            // Faz o mouse 'passar' pela janela (Modo Overlay)
             function disableInteraction() {
                 ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
                 controlPanel.classList.add('hidden');
             }
 
-            // --- LÓGICA DA TRANSCRIÇÃO ---
 
-            recognition.onstart = () => {
-                isListening = true;
-                isPaused = false;
-                captionOutput.textContent = '🔊 Ouvindo...';
-                pauseResumeButton.disabled = false;
-                stopButton.disabled = false;
-                startButton.disabled = true;
-                pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
-            };
-
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
+            // --- LÓGICA DE ÁUDIO E COMUNICAÇÃO COM PYTHON ---
+            // ... (Seu código de sendAudioChunk) ...
+            async function sendAudioChunk(chunk) {
+                if (!chunk || chunk.size === 0) return;
                 
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const transcript = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        finalTranscript += transcript + ' ';
+                try {
+                    const response = await fetch(PYTHON_API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/octet-stream'
+                        },
+                        body: chunk 
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success && data.transcription) {
+                        const currentText = captionOutput.textContent.includes('Ouvindo...') ? '' : captionOutput.textContent;
+                        let newText = data.transcription;
+                        if (newText.length > 100) {
+                            newText = newText.substring(newText.length - 100);
+                        }
+                        captionOutput.textContent = newText;
                     } else {
-                        interimTranscript += transcript;
+                        if (data.transcription && data.transcription !== "[Silêncio ou áudio ininteligível]") {
+                            captionOutput.textContent = data.transcription;
+                        }
                     }
+                } catch (error) {
+                    console.error('Erro na comunicação com o backend Python:', error);
+                    captionOutput.textContent = 'Erro de Rede/Python. Verifique o servidor (porta 5001).';
+                    stopRecording();
                 }
+            }
+            
+            // ... (Seu código de startRecording, stopProcessing, stopRecording) ...
+            function startRecording() {
+                captionOutput.textContent = 'Iniciando microfone...';
                 
-                // Exibe a legenda em tempo real
-                captionOutput.textContent = (finalTranscript + interimTranscript).trim() || '🔊 Ouvindo...';
-            };
+                navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        sampleRate: 44100,
+                        sampleSize: 16,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                })
+                .then(stream => {
+                    audioStream = stream;
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm; codecs=pcm' });
+                    
+                    mediaRecorder.ondataavailable = event => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+                    
+                    mediaRecorder.onstop = stopProcessing;
 
-            recognition.onend = () => {
+                    mediaRecorder.start(CHUNK_INTERVAL);
+                    
+                    isListening = true;
+                    isPaused = false;
+                    captionOutput.textContent = '🔊 Ouvindo...';
+                    pauseResumeButton.disabled = false;
+                    stopButton.disabled = false;
+                    startButton.disabled = true;
+                    pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
+
+                    const sendLoop = setInterval(() => {
+                        if (isListening && !isPaused && audioChunks.length > 0) {
+                            const audioBlob = new Blob(audioChunks, { type: 'application/octet-stream' });
+                            sendAudioChunk(audioBlob);
+                            audioChunks = [];
+                        }
+                        if (!isListening && sendLoop) clearInterval(sendLoop); 
+                    }, CHUNK_INTERVAL);
+                })
+                .catch(error => {
+                    console.error('Erro ao acessar o microfone:', error);
+                    captionOutput.textContent = 'Erro: Microfone bloqueado ou inacessível.';
+                    stopRecording();
+                });
+            }
+            
+            function stopProcessing() {
                 isListening = false;
                 startButton.disabled = false;
                 pauseResumeButton.disabled = true;
                 stopButton.disabled = true;
-                captionOutput.textContent = 'Pressione INICIAR para começar a legendar...';
-            };
-            
-            recognition.onerror = (event) => {
-                 console.error('Erro de reconhecimento:', event.error);
-                 captionOutput.textContent = `Erro: ${event.error}`;
-                 recognition.stop();
+                
+                if(audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                }
+                captionOutput.textContent = 'Reconhecimento encerrado.';
             }
 
+            function stopRecording() {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                } else {
+                    stopProcessing();
+                }
+                disableInteraction();
+            }
+            
             // --- MANIPULADORES DE BOTÃO ---
 
-            if (recognition) {
-                recognition.continuous = true; // OK
-                recognition.interimResults = true; // OK
-                recognition.lang = 'pt-BR'; // OK
-                
-                // ADICIONE ESTA LINHA:
-                recognition.maxAlternatives = 1; // Boa prática
-
-                // Se o problema persistir, adicione um timeout explícito (embora não seja padrão na API)
-                // recognition.grammars = null; // Garante que não há gramáticas complexas desnecessárias
-                // recognition.serviceURI = '...'; // Não altere, pois é o serviço padrão.
-            }
-
-            startButton.addEventListener('click', () => {
-                captionOutput.textContent = 'Iniciando microfone...';
-                try {
-                    // 1. Permite interagir com os botões
-                    enableInteraction(); 
-                    // 2. Inicia o reconhecimento
-                    recognition.start();
-                } catch(e) {
-                    console.error("Erro ao iniciar:", e);
-                    captionOutput.textContent = 'Erro ao iniciar a transcrição. Verifique as permissões.';
-                    disableInteraction();
-                }
+            // A linha que falhava antes, agora funciona!
+            startButton.addEventListener('click', () => { 
+                enableInteraction(); 
+                startRecording();
             });
 
             pauseResumeButton.addEventListener('click', () => {
                 if (isListening) {
                     if (isPaused) {
-                        // VOLTAR (Play)
-                        recognition.start(); 
+                        mediaRecorder.resume(); 
                         isPaused = false;
                         pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
                         captionOutput.textContent = '🔊 Retomando a escuta...';
                     } else {
-                        // PAUSAR
-                        recognition.abort(); // Interrompe temporariamente
+                        mediaRecorder.pause(); 
                         isPaused = true;
                         pauseResumeButton.innerHTML = '<i class="fas fa-play"></i> VOLTAR';
                         captionOutput.textContent = '⏸️ Pausado.';
@@ -146,17 +199,13 @@
             });
 
             stopButton.addEventListener('click', () => {
-                recognition.stop(); // Finaliza a sessão de reconhecimento
-                disableInteraction(); // Torna o overlay inerte
+                stopRecording(); 
             });
             
             // --- HABILITAR CONTROLES INICIAIS (Clique duplo na legenda para mostrar) ---
-            
             captionContainer.addEventListener('dblclick', enableInteraction);
-            
-        } else {
-            captionOutput.textContent = 'API de Reconhecimento de Voz não suportada pelo seu navegador/Electron.';
-        }
+
+        }); // FIM do DOMContentLoaded
     </script>
 </body>
 </html>

@@ -8,22 +8,22 @@ let mainWindow;
 function createWindow() {
   // Configurações críticas para o modo 'Overlay'
   mainWindow = new BrowserWindow({
-    width: 800, // Aumentamos a largura para a legenda
+    width: 800, 
     height: 150,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false, // Necessário para usar 'require' no index.html (ipcRenderer)
-      // O ignoreMouseEvents é ativado/desativado via comunicação IPC
+      contextIsolation: false, 
       ignoreMouseEvents: true 
     }
   });
 
   mainWindow.loadFile('index.html'); 
 
-  // mainWindow.webContents.openDevTools(); 
+  //mainWindow.webContents.openDevTools();
+
 }
 
 // --- OUvinte de Comunicação (IPC Main) ---
