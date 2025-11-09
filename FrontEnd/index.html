@@ -24,6 +24,10 @@
             <button id="stopButton" class="control-button" disabled>
                 <i class="fas fa-stop"></i> FINALIZAR
             </button>
+            
+            <button id="closeButton" class="control-button">
+                <i class="fas fa-times"></i> FECHAR
+            </button>
         </div>
     </div>
     <script>
@@ -173,15 +177,19 @@
                     const data = await response.json();
 
                     if (data.success && data.transcription) {
-                        const currentText = captionOutput.textContent.includes('Ouvindo...') ? '' : captionOutput.textContent;
-                        let newText = data.transcription;
-                        if (newText.length > 100) {
-                            newText = newText.substring(newText.length - 100);
-                        }
-                        captionOutput.textContent = newText;
+                        // Append new transcription to existing caption, with a space
+                        let newText = data.transcription.trim();
+                        if (newText.length === 0) return;
+                        // Limit total length to avoid overflow
+                        const existing = captionOutput.textContent === '🔊 Ouvindo...' || captionOutput.textContent.startsWith('Pressione') ? '' : captionOutput.textContent;
+                        const combined = (existing + ' ' + newText).trim();
+                        captionOutput.textContent = combined.length > 500 ? combined.slice(-500) : combined;
                     } else {
                         if (data.transcription && data.transcription !== "[Silêncio ou áudio ininteligível]") {
-                            captionOutput.textContent = data.transcription;
+                            const newText = data.transcription.trim();
+                            const existing = captionOutput.textContent === '🔊 Ouvindo...' || captionOutput.textContent.startsWith('Pressione') ? '' : captionOutput.textContent;
+                            const combined = (existing + ' ' + newText).trim();
+                            captionOutput.textContent = combined.length > 500 ? combined.slice(-500) : combined;
                         }
                     }
                 } catch (error) {
@@ -220,6 +228,8 @@
                     isListening = true;
                     isPaused = false;
                     captionOutput.textContent = '🔊 Ouvindo...';
+                    // Reset caption to start fresh for this session
+                    captionOutput.textContent = '🔊 Ouvindo...';
                     pauseResumeButton.disabled = false;
                     stopButton.disabled = false;
                     startButton.disabled = true;
@@ -250,7 +260,7 @@
                 if(audioStream) {
                     audioStream.getTracks().forEach(track => track.stop());
                 }
-                captionOutput.textContent = 'Reconhecimento encerrado.';
+                captionOutput.textContent = captionOutput.textContent + ' [Reconhecimento encerrado.]';
             }
 
             function stopRecording() {

@@ -35,6 +35,13 @@ ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
 });
 // ----------------------------------------
 
+// Listener to close the app from renderer
+ipcMain.on('app-close', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 
