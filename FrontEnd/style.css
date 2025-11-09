@@ -11,23 +11,22 @@ body {
     background-color: transparent !important; 
     margin: 0;
     padding: 0;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end; /* Alinha o painel na parte inferior da janela */
-    height: 100vh;
     font-family: Arial, sans-serif;
     user-select: none; /* Impede seleção de texto */
+    overflow: hidden;      
 }
 
 /* Container que mantém a legenda e os controles */
 .caption-container {
-    width: 95%; 
-    max-width: 800px;
+    width: 100%; 
     padding: 10px;
     margin-bottom: 10px;
+    height: 950px;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: flex-end;
+    
 }
 
 /* Estilo do Painel de Controle (Botões) */

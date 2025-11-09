@@ -9,7 +9,7 @@ function createWindow() {
   // Configurações críticas para o modo 'Overlay'
   mainWindow = new BrowserWindow({
     width: 800, 
-    height: 150,
+    height: 1000,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
