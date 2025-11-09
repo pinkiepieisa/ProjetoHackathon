@@ -1,19 +1,26 @@
 requisitos para rodar o projeto:
 Instalar python 3.9 ou superior
+- Baixe em https://www.python.org/ e execute o instalador (no Windows marque "Add Python to PATH").
+- Verifique: 
+  python --version
+  pip --version
+
+- Para o back:
+- Navegue para a pasta BackEnd no cmd
+- Instale dependências do backend:
+  pip install flask-cors Flask SpeechRecognition requests
+  (ou crie um requirements.txt e rode: pip install -r requirements.txt)
+- Rode o server do back-end:
+  python app_backend.py
+
 Instalar node.js 16 ou superior
-
-
-Navegue até a pasta do backend no cmd e rode os seguintes comandos:
-
-pip install flask-cors
-pip install Flask SpeechRecognition requests
-
-depois rode o server do back-end com python app_backend.py
-
-
-para o front:
-navegue para a psta FrontEnd no cmd e rode:
-npm install
-
-depois rode o front-end com:
-npm start
+- Baixe em https://nodejs.org/ e execute o instalador (o instalador normalmente adiciona node e npm ao PATH).
+- Verifique:
+  node --version
+  npm --version
+  
+- Para o front:
+  navegue para a pasta FrontEnd no cmd e rode:
+  npm install
+  depois rode o front-end com:
+  npm start
