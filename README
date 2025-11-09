@@ -1,92 +1,119 @@
-Requisitos e passos para rodar o projeto (Windows / PowerShell)
+README — instruções completas (Windows)
 
-Este README descreve como preparar e rodar a solução com reconhecimento em tempo real usando Vosk (WebSocket). As instruções assumem Windows, PowerShell e Python já instalados.
+Este arquivo descreve, passo a passo, tudo que você precisou fazer para rodar este projeto no Windows (inclui notas sobre permissões administrativas, venv, ffmpeg, Vosk e debug). Siga as etapas na ordem indicada.
 
-1) Instalar Python (se necessário)
-- Baixe e instale Python 3.9+ em https://www.python.org/ (marque "Add Python to PATH" no instalador).
-- Verifique no PowerShell:
-```powershell
-python --version
-pip --version
+Pré-requisitos
+- Python 3.9+ instalado (marque "Add Python to PATH" no instalador).
+- Node.js + npm para o frontend (Electron).
+- Opcional: Chocolatey para instalar ferramentas do sistema (ffmpeg). Se não tiver admin, use a instalação manual do ffmpeg descrita abaixo.
+
+1) Recomendações gerais (ambiente isolado)
+- É fortemente recomendado usar um virtualenv (venv) para o backend para evitar conflitos de pacotes e não precisar de permissões administrativas.
+
+2) Preparar o BackEnd (venv e dependências)
+- Abra o Prompt de Comando (cmd) e vá para a pasta BackEnd:
+```bat
+cd "c:\Users\Ana Karoline\OneDrive\Área de Trabalho\pastas\Fatec Sem 3\ProjetoHackathon\BackEnd"
+```
+- Criar e ativar o virtualenv:
+```bat
+python -m venv venv
+venv\Scripts\activate
+```
+- Atualizar pip e instalar dependências do projeto:
+```bat
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-2) Instalar dependências do BackEnd
-- Abra PowerShell na pasta `BackEnd` do projeto:
-```powershell
-cd C:\Users\Aluno\Documents\ProjetoHackathon\BackEnd
-```
-- Instale dependências básicas:
-```powershell
-python -m pip install --user flask flask-cors SpeechRecognition requests
-```
+3) Instalar ffmpeg (necessário apenas para debug/conversão de áudios WebM/Opus)
 
-3) (Recomendado) Instalar ffmpeg (opcional, necessário só para debug/conversão)
-- ffmpeg facilita converter WebM/Opus para WAV ao testar. Instale via Chocolatey ou manualmente:
-```powershell
+Opção A — Chocolatey (requer executar o cmd como Administrador):
+- Abra o cmd com "Run as administrator" (clique com o botão direito → Executar como administrador).
+- Rode:
+```bat
 choco install ffmpeg -y
-# ou baixe de https://ffmpeg.org/
 ```
-Verifique:
-```powershell
-ffmpeg -version
+- Se você tentou usar choco sem privilégios de administrador e recebeu erros (lock/Access denied), precisa reabrir o terminal como Administrador ou instalar ffmpeg manualmente.
+
+Opção B — Instalação manual (não requer admin):
+- Baixe um build estável do ffmpeg (ex.: https://www.gyan.dev/ffmpeg/builds/ ou https://ffmpeg.org/download.html).
+- Extraia em C:\ffmpeg (ou outra pasta sem espaços/acentos): por exemplo `C:\ffmpeg\bin\ffmpeg.exe`.
+- Adicione ao PATH do usuário (no cmd):
+```bat
+setx PATH "%PATH%;C:\ffmpeg\bin"
 ```
 
-4) Instalar Vosk e dependências para o servidor WebSocket (recomendado para baixa latência)
-- No mesmo PowerShell (pasta BackEnd):
-```powershell
-python -m pip install --user vosk websockets
-```
-- Baixe um modelo Vosk em português (sugestão: vosk-model-small-pt) do site oficial:
-  - https://alphacephei.com/vosk/models
-  - Extraia o conteúdo em `BackEnd/models/pt` (crie a pasta se necessário).
+4) Baixar e colocar o modelo Vosk (obrigatório para o servidor WS)
+- Baixe um modelo em português, por exemplo `vosk-model-small-pt` em https://alphacephei.com/vosk/models
+- Extraia o conteúdo na pasta `BackEnd/models/pt` (o script espera essa pasta). A estrutura deve conter arquivos como `final.mdl`, `mfcc.conf`, `HCLr.fst`, `phones.txt`, etc.
 
-5) Iniciar o servidor Vosk WebSocket
-- Rode no PowerShell (pasta BackEnd):
-```powershell
+Observação sobre caminhos no Windows (UNICODE/acentos)
+- Se o caminho do projeto contém caracteres não-ASCII (por exemplo "Área de Trabalho"), bibliotecas nativas (Vosk/C++) podem falhar ao abrir o modelo. Duas soluções:
+  - Mover `BackEnd/models/pt` para um caminho sem acentos, por exemplo `C:\models\pt`, e ajustar o script (`ws_vosk_server.py`) ou usar caminho absoluto.
+  - Ou garantir que você está usando a versão do script que tenta converter para o "short path" (8.3). O repositório já contém essa lógica; se ocorrer erro, mover o modelo para um caminho simples costuma resolver.
+
+5) Rodar o servidor Vosk WebSocket
+- Com o venv ativado (etapa 2):
+```bat
 python ws_vosk_server.py
 ```
 - Saída esperada:
-  - "Loading Vosk model from: models/pt"
+  - "Loading Vosk model from: <caminho>"
+  - (Se o script usar short-path no Windows) "Using short path for model (Windows): <SHORT_PATH>"
   - "Vosk WS server running on ws://127.0.0.1:2700"
 
-6) Preparar o FrontEnd (Electron)
-- No PowerShell abra a pasta `FrontEnd`:
-```powershell
-cd ..\FrontEnd
+Erros comuns ao rodar o servidor
+- ModuleNotFoundError: No module named 'websockets' — significa que as dependências não foram instaladas no ambiente atual. Solução (com venv ativo):
+```bat
+python -m pip install websockets
 ```
-- Instale dependências do frontend (se ainda não instalou):
-```powershell
+- Exception: Failed to create a model — normalmente indica que o caminho para o modelo está errado, o modelo não foi extraído corretamente, ou há problema com unicode no caminho. Verifique `dir models\pt` e se necessário mova/extrate novamente.
+
+6) Preparar o FrontEnd (Electron)
+- Abra outro terminal e vá para a pasta FrontEnd:
+```bat
+cd "c:\Users\Ana Karoline\OneDrive\Área de Trabalho\pastas\Fatec Sem 3\ProjetoHackathon\FrontEnd"
+```
+- Instale dependências (apenas se ainda não tiver feito):
+```bat
 npm install
 ```
-- Inicie o Electron (o script `start` no package.json já está configurado):
-```powershell
+- Inicie o Electron:
+```bat
 npm start
 ```
 
-7) Teste rápido (funcionamento esperado)
+7) Usar a aplicação (teste rápido)
 - Com o servidor Vosk rodando e o Electron iniciado:
   - Clique em INICIAR na UI.
-  - Fale algo em pt-BR no microfone.
-  - A legenda (caption) deve mostrar hipóteses parciais em tempo real e depois o resultado final.
+  - Conceda permissão ao microfone quando solicitado.
+  - Fale algo em pt-BR; a legenda (caixa na tela) deve exibir hipóteses parciais e o resultado final.
 
-8) Testes e debug adicionais
-- Testar a rota HTTP antiga com um WAV (útil para checar se o backend SpeechRecognition funciona):
-```powershell
-# a partir da pasta BackEnd
-curl.exe -X POST --data-binary "@Teste.wav" http://127.0.0.1:5001/transcribe -H "Content-Type: application/octet-stream"
-# ou powerhsell native
-$bytes = [System.IO.File]::ReadAllBytes("Teste.wav")
-Invoke-RestMethod -Uri "http://127.0.0.1:5001/transcribe" -Method Post -Body $bytes -ContentType "application/octet-stream"
+8) Depuração (DevTools e logs)
+- Se a legenda não aparece, abra o DevTools do renderer (Ctrl+Shift+I) para ver mensagens no Console. Mensagens úteis que o app já exibe:
+  - "WS conectado ao Vosk" / "WS connected to Vosk"
+  - "Microfone permitido. Iniciando..."
+  - "Erro: conexão WS com Vosk" ou "Conexão WS fechada"
+- No terminal do servidor (onde você rodou `ws_vosk_server.py`) você deve ver "Client connected" quando o frontend se conectar. Se aparecer "Client disconnected" imediatamente, cole ambos os logs.
+
+Comandos úteis de diagnóstico
+- Listar o conteúdo do diretório do modelo (no BackEnd):
+```bat
+dir BackEnd\models\pt
+```
+- Verificar se a porta 2700 está em uso:
+```bat
+netstat -ano | findstr :2700
+```
+- Verificar a versão do vosk instalado:
+```bat
+python -c "import vosk; print(vosk.__version__)"
 ```
 
-9) Notas e recomendações
-- O modelo Vosk pode ser grande; use a versão "small" para testes locais.
-- Para produção ou maior precisão, considere modelos maiores ou serviços de ASR.
-- Se preferir não usar Vosk, há um fallback (HTTP + ffmpeg) que converte blocos WebM para WAV e usa `speech_recognition`, porém com maior latência.
+9) Notas finais e boas práticas
+- Use um `venv` por projeto. Não instale dependências com `--user` quando estiver usando um venv.
+- Adicione o modelo ao `.gitignore` (já presente no repositório) — não commit o modelo grande.
+- Se tiver problemas com permissões do Chocolatey, use a instalação manual do ffmpeg (Opção B).
 
-10) Problemas comuns
-- "ffmpeg not found": instale ffmpeg e garanta que está no PATH.
-- "Model path not found": verifique se o modelo Vosk foi extraído em `BackEnd/models/pt`.
-- Se a legenda não aparece: abra DevTools no Electron (menu ou descomente a linha openDevTools em main.js) e veja erros no console.
-
-Se quiser, eu adiciono um `README.md` mais formatado com passos para Linux/macOS também, ou crio um script de instalação.
+Se quiser, posso adicionar comandos para Linux/macOS também, ou criar scripts (batch/PowerShell) para automatizar a criação do venv, instalação e início do servidor.

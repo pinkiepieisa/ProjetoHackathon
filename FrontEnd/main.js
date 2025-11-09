@@ -16,11 +16,15 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false, 
-      ignoreMouseEvents: true 
+      // ignoreMouseEvents removed from webPreferences: use setIgnoreMouseEvents on the window instance instead
     }
   });
 
-  mainWindow.loadFile('index.html'); 
+  mainWindow.loadFile('index.html');
+  
+
+  // Mouse-events behavior will be controlled from the renderer process
+  // based on where the cursor is (transparent vs opaque areas).
 
   //mainWindow.webContents.openDevTools();
 

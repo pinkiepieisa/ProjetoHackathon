@@ -1,0 +1,6 @@
+flask
+flask-cors
+SpeechRecognition
+vosk
+websockets
+requests

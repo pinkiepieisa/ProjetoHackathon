@@ -31,8 +31,6 @@
         </div>
     </div>
     <script>
-
-        const { ipcRenderer } = require('electron');
         // *** IMPORTANTE: ENVOLVA TODO O SEU CÓDIGO DENTRO DE DOMContentLoaded ***
         // Isso garante que o JS só tente buscar os elementos HTML APÓS eles existirem.
         document.addEventListener('DOMContentLoaded', () => {
@@ -74,6 +72,63 @@
                 ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
                 controlPanel.classList.add('hidden');
             }
+
+            // Throttled mousemove watcher: decide whether the window should ignore mouse
+            // events (pass them through to underlying windows) depending on the element
+            // under the cursor. If the element is effectively transparent to pointer
+            // events, we tell the main process to forward events; otherwise keep the
+            // window interactive.
+            let lastIgnoreState = null;
+            function parseAlphaFromBg(bg) {
+                if (!bg) return 0;
+                // bg formats: 'rgba(r, g, b, a)' or 'rgb(r, g, b)' or 'transparent'
+                if (bg === 'transparent') return 0;
+                const m = bg.match(/rgba?\(([^)]+)\)/);
+                if (!m) return 1;
+                const parts = m[1].split(',').map(s => s.trim());
+                if (parts.length === 4) return parseFloat(parts[3]) || 0;
+                return 1;
+            }
+
+            function shouldWindowIgnoreAtPoint(x, y) {
+                const el = document.elementFromPoint(x, y);
+                if (!el) return true; // nothing -> treat as transparent
+
+                // If element explicitly opts out of pointer events, pass through.
+                const pe = getComputedStyle(el).pointerEvents;
+                if (pe === 'none') return true;
+
+                // Walk up ancestors to check background alpha. If any ancestor provides
+                // a non-zero background alpha, we consider the pixel opaque for our
+                // purposes and keep the window interactive there.
+                let node = el;
+                while (node && node !== document.documentElement) {
+                    const bg = getComputedStyle(node).backgroundColor;
+                    const alpha = parseAlphaFromBg(bg);
+                    if (alpha > 0) return false; // opaque-ish
+                    node = node.parentElement;
+                }
+                // No ancestor provides an opaque background -> pass through.
+                return true;
+            }
+
+            // simple throttle
+            let mouseThrottleTimer = null;
+            window.addEventListener('mousemove', (ev) => {
+                if (mouseThrottleTimer) return;
+                mouseThrottleTimer = setTimeout(() => {
+                    mouseThrottleTimer = null;
+                    try {
+                        const wantIgnore = shouldWindowIgnoreAtPoint(ev.clientX, ev.clientY);
+                        if (wantIgnore !== lastIgnoreState) {
+                            ipcRenderer.send('set-ignore-mouse-events', wantIgnore, { forward: true });
+                            lastIgnoreState = wantIgnore;
+                        }
+                    } catch (e) {
+                        console.warn('ignore mouse detection failed', e);
+                    }
+                }, 50); // 20Hz
+            }, { passive: true });
 
 
             // --- LÓGICA DE ÁUDIO: WebAudio -> PCM16 16k -> WebSocket (Vosk) ---
@@ -119,6 +174,17 @@
 
                     ws.onopen = () => {
                         console.log('WS connected to Vosk');
+                        captionOutput.textContent = 'WS conectado ao Vosk';
+                    };
+
+                    ws.onerror = (evt) => {
+                        console.error('WS error', evt);
+                        captionOutput.textContent = 'Erro: conexão WS com Vosk';
+                    };
+
+                    ws.onclose = (evt) => {
+                        console.warn('WS closed', evt);
+                        captionOutput.textContent = 'Conexão WS fechada';
                     };
 
                     ws.onmessage = (evt) => {
@@ -136,7 +202,9 @@
                         }
                     };
 
+                    captionOutput.textContent = 'Solicitando acesso ao microfone...';
                     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    captionOutput.textContent = 'Microfone permitido. Iniciando...';
                     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                     const inputSampleRate = audioCtx.sampleRate;
                     const source = audioCtx.createMediaStreamSource(audioStream);
@@ -146,11 +214,15 @@
                     processor.connect(audioCtx.destination);
 
                     processor.onaudioprocess = (e) => {
-                        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-                        const inputData = e.inputBuffer.getChannelData(0);
-                        const downsampled = downsampleBuffer(inputData, inputSampleRate, VOSK_SAMPLE_RATE);
-                        const pcm16 = floatTo16BitPCM(downsampled);
-                        ws.send(pcm16);
+                        try {
+                            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                            const inputData = e.inputBuffer.getChannelData(0);
+                            const downsampled = downsampleBuffer(inputData, inputSampleRate, VOSK_SAMPLE_RATE);
+                            const pcm16 = floatTo16BitPCM(downsampled);
+                            ws.send(pcm16);
+                        } catch (err) {
+                            console.error('Erro no processamento de áudio:', err);
+                        }
                     };
                 } catch (err) {
                     console.error('Erro ao iniciar streaming Vosk:', err);
@@ -204,11 +276,9 @@
             }
 
             function stopRecording() {
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    mediaRecorder.stop();
-                } else {
-                    stopProcessing();
-                }
+                // Não usamos MediaRecorder neste fluxo de streaming para Vosk.
+                // Apenas encerra o processamento e oculta os controles.
+                stopProcessing();
                 disableInteraction();
             }
             

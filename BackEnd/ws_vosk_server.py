@@ -15,9 +15,12 @@ def find_model_path(base):
     if not os.path.isdir(base):
         return None
     entries = [e for e in os.listdir(base) if os.path.isdir(os.path.join(base, e))]
-    # If base itself looks like a model (contains typical files/folders), use it
+    # If base itself looks like a model (contains typical files), use it.
+    # Look for common Vosk/Kaldi model indicators: .mdl files, .fst files, mfcc.conf, model.conf
     base_contents = set(os.listdir(base))
-    if {'am', 'conf'}.intersection(base_contents) or 'model.conf' in base_contents or 'HCLG.fst' in base_contents:
+    has_mdl = any(name.endswith('.mdl') for name in base_contents)
+    has_fst = any(name.endswith('.fst') for name in base_contents)
+    if has_mdl or has_fst or 'mfcc.conf' in base_contents or 'model.conf' in base_contents:
         return base
 
     # Prefer a subdirectory that looks like a model (contains model indicators)
@@ -27,7 +30,10 @@ def find_model_path(base):
             contents = set(os.listdir(subpath))
         except Exception:
             contents = set()
-        if {'am', 'conf'}.intersection(contents) or 'model.conf' in contents or 'HCLG.fst' in contents:
+        # Check subfolder for model indicators as well
+        sub_has_mdl = any(name.endswith('.mdl') for name in contents)
+        sub_has_fst = any(name.endswith('.fst') for name in contents)
+        if sub_has_mdl or sub_has_fst or 'mfcc.conf' in contents or 'model.conf' in contents:
             return subpath
 
     # If none of the subfolders look like a model, try common model-named folders
@@ -45,11 +51,45 @@ if not MODEL_PATH:
     print(f"ERROR: Vosk model not found. Expected files under: {MODEL_BASE}")
     print("Please download a Vosk model (e.g. vosk-model-small-pt) and extract it under BackEnd/models/pt")
     sys.exit(1)
+def _to_short_path_if_windows(path):
+    """Convert a long/unicode Windows path to its short (8.3) form to avoid
+    potential issues in native libraries that don't handle wide unicode paths.
+    If not on Windows or conversion fails, returns the original path.
+    """
+    try:
+        if os.name == 'nt':
+            # Use GetShortPathNameW to get an ASCII-safe short path
+            from ctypes import create_unicode_buffer, windll
+            buf = create_unicode_buffer(260)
+            res = windll.kernel32.GetShortPathNameW(path, buf, 260)
+            if res and buf.value:
+                return buf.value
+    except Exception as e:
+        print('Warning: short-path conversion failed:', e)
+    return path
 
 print("Loading Vosk model from:", MODEL_PATH)
-model = Model(MODEL_PATH)
+MODEL_PATH_SHORT = _to_short_path_if_windows(os.path.abspath(MODEL_PATH))
+if MODEL_PATH_SHORT != os.path.abspath(MODEL_PATH):
+    print("Using short path for model (Windows):", MODEL_PATH_SHORT)
+try:
+    model = Model(MODEL_PATH_SHORT)
+except Exception as e:
+    # Provide more diagnostics: list model dir contents and retry with original path
+    print("Failed to create model using:", MODEL_PATH_SHORT)
+    try:
+        print("Directory listing:", os.listdir(MODEL_PATH))
+    except Exception:
+        pass
+    # Final attempt with original path (may raise same error)
+    model = Model(MODEL_PATH)
 
-async def handler(websocket, path):
+async def handler(websocket, path=None):
+    # websockets library changed handler signature in newer versions and may pass
+    # a single 'connection' argument. Support both signatures by accepting an
+    # optional path and extracting it if necessary.
+    if path is None:
+        path = getattr(websocket, 'path', None)
     print("Client connected")
     rec = KaldiRecognizer(model, SAMPLE_RATE)
     rec.SetWords(True)
